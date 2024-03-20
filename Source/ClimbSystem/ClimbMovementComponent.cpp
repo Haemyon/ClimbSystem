@@ -36,6 +36,17 @@ void UClimbMovementComponent::SweepAndStoreWallHits()
 		for (int32 Index = 0; Index < Hits.Num(); Index++)
 		{
 			DrawDebugPoint(GetWorld(), Hits[Index].ImpactPoint, 20.0f, FColor::Cyan, false);
+
+			for (FHitResult& Hit : CurrentWallHits)
+			{
+				const FVector HorizontalNormal = Hit.Normal.GetSafeNormal2D();
+
+				const float VerticalDot = FVector::DotProduct(Hit.Normal, HorizontalNormal);
+
+				const float HorizontalDegrees = FMath::RadiansToDegrees(FMath::Acos(VerticalDot));
+
+				UE_LOG(LogTemp, Log, TEXT("Wall Degrees: %f"), HorizontalDegrees);
+			}
 		}
 	}
 	else
@@ -55,4 +66,25 @@ void UClimbMovementComponent::SweepAndStoreWallHits()
 		false,
 		-1.0f
 	);
+}
+
+bool UClimbMovementComponent::CanStartClimbing()
+{
+	for (FHitResult& Hit : CurrentWallHits)
+	{
+		const FVector HorizontalNormal = Hit.Normal.GetSafeNormal2D();
+
+		const float HorizontalDot = FVector::DotProduct(UpdatedComponent->GetForwardVector(), -HorizontalNormal);
+		const float VerticalDot = FVector::DotProduct(Hit.Normal, HorizontalNormal);
+
+		const float HorizontalDegrees = FMath::RadiansToDegrees(FMath::Acos(HorizontalDot));
+
+		const bool bIsCeiling = FMath::IsNearlyZero(VerticalDot);
+
+		if (HorizontalDegrees <= MinHorizontalDegressToStartClimbing && !bIsCeiling)
+		{
+			return true;
+		}
+	}
+	return false;
 }

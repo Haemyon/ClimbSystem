@@ -30,4 +30,9 @@ private:
 	TArray<FHitResult> CurrentWallHits;
 
 	FCollisionQueryParams ClimbQueryParams;
+
+	UPROPERTY(Category = "CharacterMovement: Climbing", EditAnywhere, meta = (ClampMin = "1.0", ClampMax = "75.0"))
+	float MinHorizontalDegressToStartClimbing = 25;
+
+	bool CanStartClimbing();
 };
