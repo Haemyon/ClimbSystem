@@ -35,4 +35,10 @@ private:
 	float MinHorizontalDegressToStartClimbing = 25;
 
 	bool CanStartClimbing();
+
+	bool EyeHeightTrace(const float TraceDistance) const;
+
+	bool IsFacingSurface(float Steepness) const;
+
+	virtual void OnMovementUpdated(float DeltaSeconds, const FVector& OldLocation, const FVector& OldVelocity) override;
 };
