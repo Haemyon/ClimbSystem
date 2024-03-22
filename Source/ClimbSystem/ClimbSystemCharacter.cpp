@@ -135,8 +135,11 @@ void AClimbSystemCharacter::Move(const FInputActionValue& Value)
 		// add movement 
 		if (MovementComponent->IsClimbing() == true)
 		{
+			//AddMovementInput(UpDirection, MovementVector.Y);
+			//AddMovementInput(RightDirection, MovementVector.X);
 			AddMovementInput(UpDirection, MovementVector.Y);
 			AddMovementInput(RightDirection, MovementVector.X);
+			UE_LOG(LogTemp, Log, TEXT("Climbing Input"));
 		}
 		else
 		{

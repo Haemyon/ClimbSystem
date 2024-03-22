@@ -4,6 +4,8 @@
 #include "ClimbMovementComponent.h"
 
 #include "ClimbSystemCharacter.h"
+#include "Components/CapsuleComponent.h"
+
 #include "ECustomMovementMode.h"
 
 void UClimbMovementComponent::BeginPlay()
@@ -138,6 +140,32 @@ void UClimbMovementComponent::OnMovementUpdated(float DeltaSeconds, const FVecto
 	Super::OnMovementUpdated(DeltaSeconds, OldLocation, OldVelocity);
 }
 
+void UClimbMovementComponent::OnMovementModeChanged(EMovementMode PreviousMovementMode, uint8 PreviousCustomMode)
+{
+	if (IsClimbing())
+	{
+		bOrientRotationToMovement = false;
+
+		UCapsuleComponent* Capsule = CharacterOwner->GetCapsuleComponent();
+		Capsule->SetCapsuleHalfHeight(Capsule->GetUnscaledCapsuleHalfHeight() - ClimbingCollisionShrinkAmount);
+	}
+
+	const bool bWasClimbing = PreviousMovementMode == MOVE_Custom && PreviousCustomMode == CMOVE_Climbing;
+	if (bWasClimbing)
+	{
+		bOrientRotationToMovement = true;
+
+		const FRotator StandRotation = FRotator(0, UpdatedComponent->GetComponentRotation().Yaw, 0);
+		UpdatedComponent->SetRelativeRotation(StandRotation);
+
+		UCapsuleComponent* Capsule = CharacterOwner->GetCapsuleComponent();
+		Capsule->SetCapsuleHalfHeight(Capsule->GetUnscaledCapsuleHalfHeight() + ClimbingCollisionShrinkAmount);
+
+		StopMovementImmediately();
+	}
+	Super::OnMovementModeChanged(PreviousMovementMode, PreviousCustomMode);
+}
+
 void UClimbMovementComponent::TryClimbing()
 {
 	if (CanStartClimbing() == true)
@@ -149,9 +177,6 @@ void UClimbMovementComponent::TryClimbing()
 
 void UClimbMovementComponent::CancelClimbing()
 {
-	//if (bWantsToClimb)
-	//{
-	//}
 	bWantsToClimb = false;
 	UE_LOG(LogTemp, Log, TEXT("CancelClimbing"));
 }
@@ -163,5 +188,145 @@ bool UClimbMovementComponent::IsClimbing() const
 
 FVector UClimbMovementComponent::GetClimbSurfaceNormal() const
 {
-	return FVector();
+	return CurrentClimbingNormal;
+}
+
+void UClimbMovementComponent::PhysCustom(float deltaTime, int32 Iterations)
+{
+	if (CustomMovementMode == ECustomMovementMode::CMOVE_Climbing)
+	{
+		PhysClimbing(deltaTime, Iterations);
+	}
+	Super::PhysCustom(deltaTime, Iterations);
+}
+
+void UClimbMovementComponent::PhysClimbing(float deltaTime, int32 Iterations)
+{
+	if (deltaTime < MIN_TICK_TIME)
+	{
+		return;
+	}
+
+	ComputeSurfaceInfo();
+
+	if (ShouldStopClimbing())
+	{
+		StopClimbing(deltaTime, Iterations);
+		return;
+	}
+
+	ComputeClimbingVelocity(deltaTime);
+
+	const FVector OldLocation = UpdatedComponent->GetComponentLocation();
+
+	MoveAlongClimbingSurface(deltaTime);
+
+	if (!HasAnimRootMotion() && !CurrentRootMotion.HasOverrideVelocity())
+	{
+		Velocity = (UpdatedComponent->GetComponentLocation() - OldLocation) / deltaTime;
+	}
+	SnapToClimbingSurface(deltaTime);
+}
+
+void UClimbMovementComponent::ComputeSurfaceInfo()
+{
+	CurrentClimbingNormal = FVector::ZeroVector;
+	CurrentClimbingPosition = FVector::ZeroVector;
+
+	if (CurrentWallHits.IsEmpty())
+	{
+		return;
+	}
+	
+	const FVector Start = UpdatedComponent->GetComponentLocation();
+	const FCollisionShape CollisionSphere = FCollisionShape::MakeSphere(6);
+
+	for (const FHitResult& WallHit : CurrentWallHits)
+	{
+		const FVector End = Start + (WallHit.ImpactPoint - Start).GetSafeNormal() * 120;
+
+		FHitResult AssistHit;
+		GetWorld()->SweepSingleByChannel(AssistHit, Start, End, FQuat::Identity,
+			ECC_WorldStatic, CollisionSphere, ClimbQueryParams);
+
+		CurrentClimbingPosition += AssistHit.ImpactPoint;
+		CurrentClimbingNormal += AssistHit.Normal;
+	}
+
+	CurrentClimbingPosition /= CurrentWallHits.Num();
+	CurrentClimbingNormal = CurrentClimbingNormal.GetSafeNormal();
+}
+
+void UClimbMovementComponent::ComputeClimbingVelocity(float deltaTime)
+{
+	RestorePreAdditiveRootMotionVelocity();
+
+	if (!HasAnimRootMotion() && !CurrentRootMotion.HasOverrideVelocity())
+	{
+		constexpr float Friction = 0.0f;
+		constexpr bool bFluid = false;
+		CalcVelocity(deltaTime, Friction, bFluid, BrakingDecelerationClimbing);
+	}
+
+	ApplyRootMotionToVelocity(deltaTime);
+}
+
+bool UClimbMovementComponent::ShouldStopClimbing()
+{
+	const bool bIsOnCeiling = FVector::Parallel(CurrentClimbingNormal, FVector::UpVector);
+
+	return !bWantsToClimb || CurrentClimbingNormal.IsZero() || bIsOnCeiling;
+}
+
+void UClimbMovementComponent::StopClimbing(float deltaTime, int32 Iterations)
+{
+	bWantsToClimb = false;
+	SetMovementMode(EMovementMode::MOVE_Falling);
+	StartNewPhysics(deltaTime, Iterations);
+}
+
+void UClimbMovementComponent::MoveAlongClimbingSurface(float deltaTime)
+{
+	const FVector Adjusted = Velocity * deltaTime;
+
+	FHitResult Hit(1.f);
+
+	SafeMoveUpdatedComponent(Adjusted, GetClimbingRotation(deltaTime), true, Hit);
+
+	if (Hit.Time < 1.f)
+	{
+		HandleImpact(Hit, deltaTime, Adjusted);
+		SlideAlongSurface(Adjusted, (1.f - Hit.Time), Hit.Normal, Hit, true);
+	}
+}
+
+void UClimbMovementComponent::SnapToClimbingSurface(float deltaTime) const
+{
+	const FVector Forward = UpdatedComponent->GetForwardVector();
+	const FVector Location = UpdatedComponent->GetComponentLocation();
+	const FQuat Rotation = UpdatedComponent->GetComponentQuat();
+
+	const FVector ForwardDifference = (CurrentClimbingPosition - Location).ProjectOnTo(Forward);
+	const FVector Offset = -CurrentClimbingNormal * (ForwardDifference.Length() - DistanceFromSurface);
+
+	constexpr bool bSweep = true;
+	UpdatedComponent->MoveComponent(Offset * ClimbingSnapSpeed * deltaTime, Rotation, bSweep);
+}
+
+float UClimbMovementComponent::GetMaxSpeed() const
+{
+	return IsClimbing() ? MaxClimbingSpeed : Super::GetMaxSpeed();
+}
+
+float UClimbMovementComponent::GetMaxAcceleration() const
+{
+	return IsClimbing() ? MaxClimbingAcceleration : Super::GetMaxAcceleration();
+}
+
+FQuat UClimbMovementComponent::GetClimbingRotation(float deltaTime) const
+{
+	const FQuat Current = UpdatedComponent->GetComponentQuat();
+	const FQuat Target = FRotationMatrix::MakeFromX(-CurrentClimbingNormal).ToQuat();
+
+	return FMath::QInterpTo(Current, Target, deltaTime, ClimbingRotationSpeed);
 }
