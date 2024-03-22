@@ -44,6 +44,12 @@ class AClimbSystemCharacter : public ACharacter
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = Input, meta = (AllowPrivateAccess = "true"))
 	UInputAction* LookAction;
 
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = Input, meta = (AllowPrivateAccess = "true"))
+	UInputAction* ClimbAction;
+
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = Input, meta = (AllowPrivateAccess = "true"))
+	UInputAction* ClimbCancelAction;
+
 public:
 	AClimbSystemCharacter(const FObjectInitializer& ObjectInitializer);
 	
@@ -61,6 +67,9 @@ protected:
 
 	/** Called for looking input */
 	void Look(const FInputActionValue& Value);
+
+	void Climb(const FInputActionValue& Value);
+	void ClimbCancel(const FInputActionValue& Value);
 			
 
 protected:

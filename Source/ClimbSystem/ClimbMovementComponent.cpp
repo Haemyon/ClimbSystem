@@ -68,7 +68,7 @@ void UClimbMovementComponent::SweepAndStoreWallHits()
 	{
 		CurrentWallHits.Reset();
 	}
-	CanStartClimbing();
+	//CanStartClimbing();
 	//히트 범위 디버깅
 	FVector Center = GetActorLocation() + StartOffset * 0.5f;
 	DrawDebugCapsule(GetWorld(), Center, CollisionCapsuleHalfHeight, CollisionCapsuleRadius, FQuat::Identity, FColor::White, false, -1.0f);
@@ -76,25 +76,28 @@ void UClimbMovementComponent::SweepAndStoreWallHits()
 
 bool UClimbMovementComponent::CanStartClimbing()
 {
-	for (FHitResult& Hit : CurrentWallHits)
-	{
-		const FVector HorizontalNormal = Hit.Normal.GetSafeNormal2D();
-
-		const float HorizontalDot = FVector::DotProduct(UpdatedComponent->GetForwardVector(), -HorizontalNormal);
-		const float VerticalDot = FVector::DotProduct(Hit.Normal, HorizontalNormal);
-
-		const float HorizontalDegrees = FMath::RadiansToDegrees(FMath::Acos(HorizontalDot));
-
-		const bool bIsCeiling = FMath::IsNearlyZero(VerticalDot);
-
-		if (HorizontalDegrees <= MinHorizontalDegressToStartClimbing &&
-			!bIsCeiling && IsFacingSurface(VerticalDot))
+	//if (CurrentWallHits.Num() > 0)
+	//{
+		for (FHitResult& Hit : CurrentWallHits)
 		{
-			UE_LOG(LogTemp, Log, TEXT("Can Climb!!"));
-			return true;
+			const FVector HorizontalNormal = Hit.Normal.GetSafeNormal2D();
+
+			const float HorizontalDot = FVector::DotProduct(UpdatedComponent->GetForwardVector(), -HorizontalNormal);
+			const float VerticalDot = FVector::DotProduct(Hit.Normal, HorizontalNormal);
+
+			const float HorizontalDegrees = FMath::RadiansToDegrees(FMath::Acos(HorizontalDot));
+
+			const bool bIsCeiling = FMath::IsNearlyZero(VerticalDot);
+
+			if (HorizontalDegrees <= MinHorizontalDegressToStartClimbing &&
+				!bIsCeiling && IsFacingSurface(VerticalDot))
+			{
+				//UE_LOG(LogTemp, Log, TEXT("Can Climb!!"));
+				return true;
+			}
 		}
-	}
-	UE_LOG(LogTemp, Error, TEXT("Can't Climb!!"));
+		//UE_LOG(LogTemp, Error, TEXT("Can't Climb!!"));
+	//}
 	return false;
 }
 
@@ -109,7 +112,7 @@ bool UClimbMovementComponent::EyeHeightTrace(const float TraceDistance) const
 	//눈 높이 라인 트레이스 디버그
 	DrawDebugLine(GetWorld(), Start, End, FColor::Orange, false, -1.0f, 0U, 1.0f);
 
-	return GetWorld()->LineTraceSingleByChannel(UpperEdgeHit, Start, End, 
+	return GetWorld()->LineTraceSingleByChannel(UpperEdgeHit, Start, End,
 		ECC_WorldStatic, ClimbQueryParams);
 }
 
@@ -125,9 +128,40 @@ void UClimbMovementComponent::OnMovementUpdated(float DeltaSeconds, const FVecto
 {
 	if (CanStartClimbing())
 	{
-		//SetMovementMode(EMovementMode::MOVE_Custom, ECustomMovementMode::CMOVE_Climbing);
-		UE_LOG(LogTemp, Log, TEXT("SET CMOVE_Climbing Mode"));
+		if (bWantsToClimb)
+		{
+			SetMovementMode(EMovementMode::MOVE_Custom, ECustomMovementMode::CMOVE_Climbing);
+			UE_LOG(LogTemp, Log, TEXT("SET CMOVE_Climbing Mode"));
+		}
 	}
 
 	Super::OnMovementUpdated(DeltaSeconds, OldLocation, OldVelocity);
+}
+
+void UClimbMovementComponent::TryClimbing()
+{
+	if (CanStartClimbing() == true)
+	{
+		bWantsToClimb = true;
+		UE_LOG(LogTemp, Log, TEXT("TryClimbing"));
+	}
+}
+
+void UClimbMovementComponent::CancelClimbing()
+{
+	//if (bWantsToClimb)
+	//{
+	//}
+	bWantsToClimb = false;
+	UE_LOG(LogTemp, Log, TEXT("CancelClimbing"));
+}
+
+bool UClimbMovementComponent::IsClimbing() const
+{
+	return MovementMode == EMovementMode::MOVE_Custom && CustomMovementMode == ECustomMovementMode::CMOVE_Climbing;
+}
+
+FVector UClimbMovementComponent::GetClimbSurfaceNormal() const
+{
+	return FVector();
 }

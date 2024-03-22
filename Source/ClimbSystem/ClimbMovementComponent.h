@@ -41,4 +41,18 @@ private:
 	bool IsFacingSurface(float Steepness) const;
 
 	virtual void OnMovementUpdated(float DeltaSeconds, const FVector& OldLocation, const FVector& OldVelocity) override;
+
+public:
+	void TryClimbing();
+
+	void CancelClimbing();
+
+	UFUNCTION(BlueprintPure)
+	bool IsClimbing() const;
+
+	UFUNCTION(BlueprintPure)
+	FVector GetClimbSurfaceNormal() const;
+
+private:
+	bool bWantsToClimb = false;
 };

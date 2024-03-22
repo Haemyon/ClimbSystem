@@ -25,7 +25,7 @@ AClimbSystemCharacter::AClimbSystemCharacter(const FObjectInitializer& ObjectIni
 
 	// Set size for collision capsule
 	GetCapsuleComponent()->InitCapsuleSize(42.f, 96.0f);
-		
+
 	// Don't rotate when the controller rotates. Let that just affect the camera.
 	bUseControllerRotationPitch = false;
 	bUseControllerRotationYaw = false;
@@ -57,6 +57,17 @@ AClimbSystemCharacter::AClimbSystemCharacter(const FObjectInitializer& ObjectIni
 
 	// Note: The skeletal mesh and anim blueprint references on the Mesh component (inherited from Character) 
 	// are set in the derived blueprint asset named ThirdPersonCharacter (to avoid direct content references in C++)
+
+	static ConstructorHelpers::FObjectFinder<UInputAction>IA_Climb(TEXT("/Script/EnhancedInput.InputAction'/Game/ThirdPerson/Input/Actions/IA_Climb.IA_Climb'"));
+	if (IA_Climb.Succeeded())
+	{
+		ClimbAction = IA_Climb.Object;
+	}
+	static ConstructorHelpers::FObjectFinder<UInputAction>IA_ClimbCancel(TEXT("/Script/EnhancedInput.InputAction'/Game/ThirdPerson/Input/Actions/IA_ClimbCancel.IA_ClimbCancel'"));
+	if (IA_ClimbCancel.Succeeded())
+	{
+		ClimbCancelAction = IA_ClimbCancel.Object;
+	}
 }
 
 void AClimbSystemCharacter::BeginPlay()
@@ -81,7 +92,7 @@ void AClimbSystemCharacter::SetupPlayerInputComponent(UInputComponent* PlayerInp
 {
 	// Set up action bindings
 	if (UEnhancedInputComponent* EnhancedInputComponent = Cast<UEnhancedInputComponent>(PlayerInputComponent)) {
-		
+
 		// Jumping
 		EnhancedInputComponent->BindAction(JumpAction, ETriggerEvent::Started, this, &ACharacter::Jump);
 		EnhancedInputComponent->BindAction(JumpAction, ETriggerEvent::Completed, this, &ACharacter::StopJumping);
@@ -91,6 +102,9 @@ void AClimbSystemCharacter::SetupPlayerInputComponent(UInputComponent* PlayerInp
 
 		// Looking
 		EnhancedInputComponent->BindAction(LookAction, ETriggerEvent::Triggered, this, &AClimbSystemCharacter::Look);
+
+		EnhancedInputComponent->BindAction(ClimbAction, ETriggerEvent::Started, this, &AClimbSystemCharacter::Climb);
+		EnhancedInputComponent->BindAction(ClimbCancelAction, ETriggerEvent::Started, this, &AClimbSystemCharacter::ClimbCancel);
 	}
 	else
 	{
@@ -111,13 +125,24 @@ void AClimbSystemCharacter::Move(const FInputActionValue& Value)
 
 		// get forward vector
 		const FVector ForwardDirection = FRotationMatrix(YawRotation).GetUnitAxis(EAxis::X);
-	
+
 		// get right vector 
 		const FVector RightDirection = FRotationMatrix(YawRotation).GetUnitAxis(EAxis::Y);
 
+		// get up vector
+		const FVector UpDirection = FRotationMatrix(YawRotation).GetUnitAxis(EAxis::Z);
+
 		// add movement 
-		AddMovementInput(ForwardDirection, MovementVector.Y);
-		AddMovementInput(RightDirection, MovementVector.X);
+		if (MovementComponent->IsClimbing() == true)
+		{
+			AddMovementInput(UpDirection, MovementVector.Y);
+			AddMovementInput(RightDirection, MovementVector.X);
+		}
+		else
+		{
+			AddMovementInput(ForwardDirection, MovementVector.Y);
+			AddMovementInput(RightDirection, MovementVector.X);
+		}
 	}
 }
 
@@ -131,5 +156,21 @@ void AClimbSystemCharacter::Look(const FInputActionValue& Value)
 		// add yaw and pitch input to controller
 		AddControllerYawInput(LookAxisVector.X);
 		AddControllerPitchInput(LookAxisVector.Y);
+	}
+}
+
+void AClimbSystemCharacter::Climb(const FInputActionValue& Value)
+{
+	if (Controller != nullptr)
+	{
+		MovementComponent->TryClimbing();
+	}
+}
+
+void AClimbSystemCharacter::ClimbCancel(const FInputActionValue& Value)
+{
+	if (Controller != nullptr)
+	{
+		MovementComponent->CancelClimbing();
 	}
 }
